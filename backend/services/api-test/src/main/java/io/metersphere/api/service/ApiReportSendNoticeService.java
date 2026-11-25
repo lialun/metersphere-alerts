@@ -90,6 +90,7 @@ public class ApiReportSendNoticeService {
                 && "COMPLETED".equals(scheduledReport.getExecStatus()) && !Boolean.TRUE.equals(noticeDTO.getRerun())) {
             ScheduledAlertResult result = new ScheduledAlertResult();
             result.setReportId(scheduledReport.getId());
+            result.setExecutionId(apiFailureDetailService.executionId(scheduledReport.getId()));
             result.setEndTime(scheduledReport.getEndTime());
             result.setFailed("ERROR".equals(scheduledReport.getStatus()));
             String scopeEnvironment = (noticeDTO.getRunModeConfig() == null ? "" :

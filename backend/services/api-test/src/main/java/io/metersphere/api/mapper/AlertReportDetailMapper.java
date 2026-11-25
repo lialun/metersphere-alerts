@@ -35,8 +35,12 @@ public interface AlertReportDetailMapper {
         """)
     List<String> planScenarioReports(String reportId);
 
+    @Select("SELECT MIN(task_resource_id) FROM api_report_relate_task WHERE report_id=#{reportId}")
+    String executionId(String reportId);
+
     @Select("""
-        SELECT r.id AS report_id, r.end_time, (r.status='ERROR') AS failed
+        SELECT r.id AS report_id, r.end_time, (r.status='ERROR') AS failed,
+          COALESCE((SELECT MIN(task_resource_id) FROM api_report_relate_task t WHERE t.report_id=r.id),r.id) AS execution_id
         FROM api_report r JOIN api_test_case_record c ON c.api_report_id=r.id
         WHERE r.project_id=#{project} AND c.api_test_case_id=#{resource} AND r.environment_id <=> #{environment}
           AND r.trigger_mode='SCHEDULE' AND r.exec_status='COMPLETED'
@@ -46,7 +50,8 @@ public interface AlertReportDetailMapper {
                                             @Param("environment") String environment);
 
     @Select("""
-        SELECT r.id AS report_id, r.end_time, (r.status='ERROR') AS failed
+        SELECT r.id AS report_id, r.end_time, (r.status='ERROR') AS failed,
+          COALESCE((SELECT MIN(task_resource_id) FROM api_report_relate_task t WHERE t.report_id=r.id),r.id) AS execution_id
         FROM api_scenario_report r JOIN api_scenario_record c ON c.api_scenario_report_id=r.id
         WHERE r.project_id=#{project} AND c.api_scenario_id=#{resource} AND r.environment_id <=> #{environment}
           AND r.trigger_mode='SCHEDULE' AND r.exec_status='COMPLETED'
@@ -56,7 +61,7 @@ public interface AlertReportDetailMapper {
                                                 @Param("environment") String environment);
 
     @Select("""
-        SELECT id AS report_id, end_time, (result_status!='SUCCESS') AS failed
+        SELECT id AS report_id, id AS execution_id, end_time, (result_status!='SUCCESS') AS failed
         FROM test_plan_report WHERE project_id=#{project} AND test_plan_id=#{resource}
           AND trigger_mode='SCHEDULE' AND exec_status='COMPLETED'
         ORDER BY end_time DESC, id DESC LIMIT 100

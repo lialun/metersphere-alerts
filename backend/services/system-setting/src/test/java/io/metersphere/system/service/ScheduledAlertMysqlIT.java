@@ -93,6 +93,28 @@ class ScheduledAlertMysqlIT {
         assertNull(result("2", false));
         assertEquals(2, result("4", true).consecutiveFailures());
     }
+    @Test void interleavedLateReportsCannotRenotifyAnExecution() {
+        policy(1, true);
+        for (int i=1; i<=3; i++) {
+            ScheduledAlertResult report = new ScheduledAlertResult(); report.setReportId("late-report" + i);
+            report.setExecutionId(i == 2 ? "second-round" : "first-round");
+            report.setEndTime(clock + i); report.setFailed(true);
+            ScheduledAlertDecision decision = service.record("project", "API_SCENARIO_TASK", "resource", "env", report, List.of());
+            if (i <= 2) { assertNotNull(decision); } else { assertNull(decision); }
+        }
+    }
+    @Test void multipleReportsFromOneExecutionCountOnce() {
+        policy(2, true);
+        for (int i=1; i<=4; i++) {
+            ScheduledAlertResult report = new ScheduledAlertResult(); report.setReportId("report" + i);
+            report.setExecutionId(i <= 2 ? "round-one" : "round-two");
+            report.setEndTime(clock + i); report.setFailed(true);
+            ScheduledAlertDecision decision = service.record("project", "API_SCENARIO_TASK", "resource", "env", report, List.of());
+            if (i == 3) { assertEquals(2, decision.consecutiveFailures()); }
+            else { assertNull(decision); }
+        }
+        assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM scheduled_alert_result", Integer.class));
+    }
     @Test void optimisticEditsAndTemplateValidation() {
         ScheduledAlertPolicy stale = service.getPolicy("project", "API_SCENARIO_TASK");
         policy(2, true); assertThrows(RuntimeException.class, () -> service.savePolicy(stale));

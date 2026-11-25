@@ -67,7 +67,7 @@ public class ScheduledAlertService {
     /**
      * The state upsert acquires an exclusive lock immediately (INSERT IGNORE would upgrade a shared lock).
      * READ_COMMITTED keeps the history query fresh after a concurrent callback commits while we wait.
-     * A lock serializes concurrent callbacks; unique report IDs make Kafka redelivery idempotent.
+     * A lock serializes concurrent callbacks; unique execution IDs make duplicate reports and Kafka redelivery idempotent.
      * Ordering uses persisted execution completion time, not callback arrival time. A late callback
      * can complete a streak and nominate the latest failed report, rather than send stale content.
      */
@@ -80,7 +80,7 @@ public class ScheduledAlertService {
                 Objects.requireNonNullElse(environment, ""), String.valueOf(policy.getRevision())));
         mapper.createState(scope, projectId, taskType);
         ScheduledAlertState state = mapper.lockState(scope);
-        if (mapper.addResult(scope, result) == 0) { return null; }
+        mapper.addResult(scope, result);
         // Reports, rather than message arrival, determine continuity: a delayed success callback
         // must not turn fail/success/fail into a false consecutive-failure alert.
         List<ScheduledAlertResult> backfill = completedResults.stream()
@@ -100,10 +100,11 @@ public class ScheduledAlertService {
             return null;
         }
         if (count < policy.getFailureThreshold()
-                || Objects.equals(state.getLastNotifiedReport(), latest.getReportId())
-                || (!policy.isRepeatNotifications() && state.getLastNotifiedReport() != null
+                || latest.isNotified()
+                || (!policy.isRepeatNotifications() && state.getLastNotifiedExecution() != null
                     && recovery <= state.getLastRecoveryTime())) { return null; }
-        mapper.notified(scope, latest.getReportId(), recovery);
+        mapper.markNotified(scope, latest.getExecutionId());
+        mapper.notified(scope, latest.getExecutionId(), recovery);
         return new ScheduledAlertDecision(latest.getReportId(), count, policy);
     }
 

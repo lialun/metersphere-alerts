@@ -16,6 +16,8 @@ public class ApiFailureDetailService {
     private final AlertReportDetailMapper mapper;
     public ApiFailureDetailService(AlertReportDetailMapper mapper) { this.mapper = mapper; }
 
+    public String executionId(String reportId) { return mapper.executionId(reportId); }
+
     public List<ScheduledAlertResult> completedResults(String project, String resource, String environment, boolean scenario) {
         return scenario ? mapper.completedScenarios(project, resource, environment) : mapper.completedCases(project, resource, environment);
     }

@@ -4,6 +4,6 @@ import lombok.Data;
 
 @Data
 public class ScheduledAlertState {
-    private String lastNotifiedReport;
+    private String lastNotifiedExecution;
     private long lastRecoveryTime;
 }

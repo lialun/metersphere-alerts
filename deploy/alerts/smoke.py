@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run only against containers created here. Uses the fresh image's public synthetic admin account."""
 import argparse
+import datetime
 import http.cookiejar
 import json
 import pathlib
@@ -75,7 +76,7 @@ def main():
                    '--add-modules', 'jdk.httpserver', '-cp', '/mock', 'AlertMock')
             docker('run', '-d', '--name', app, '--label', 'codex.verification=' + run, '--network', run,
                    '--memory', '4g', '--cpus', '2', '--pids-limit', '2048',
-                   '-e', 'JAVA_TOOL_OPTIONS=-Xms128m -Xmx512m -Dlogging.level.io.metersphere.api.service.ApiReportSendNoticeService=DEBUG', args.image)
+                   '-e', 'JAVA_TOOL_OPTIONS=-Xms128m -Xmx512m -Duser.timezone=UTC -Dlogging.level.io.metersphere.api.service.ApiReportSendNoticeService=DEBUG', args.image)
             ip = lambda name: docker('inspect', '--format', '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}', name)
             client = Client('http://' + ip(app) + ':8081')
             mock = Client('http://' + ip(sink) + ':8080')
@@ -129,10 +130,14 @@ def main():
                 return client.api('/api/scenario/execute/page', {'id': scenario, 'current': 1, 'pageSize': 100})['list']
             def notifications():
                 return [item.get('content', {}).get('text', '') for item in mock.api('/notifications')]
+            def one_shot_cron():
+                target = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=10)
+                return f'{target.second} {target.minute} {target.hour} {target.day} {target.month} ? {target.year}'
             def run_round(status, expected_notifications):
                 mock.api('/mode/' + str(status))
                 before = {item['id'] for item in reports()}
                 before_executions = {item['id'] for item in executions()}
+                schedule['cron'] = one_shot_cron()
                 schedule['enable'] = True
                 client.api('/api/scenario/schedule-config', schedule)
                 try:
@@ -148,7 +153,7 @@ def main():
                     wait_for(lambda: len(notifications()) >= expected_notifications, 15)
                 time.sleep(2)
                 print(json.dumps({'roundReport': {key: detail.get(key) for key in ['triggerMode', 'runMode', 'execStatus', 'status', 'errorCount']},
-                    'completedReports': len(reports()), 'notifications': len(notifications()),
+                    'completedReports': len(reports()), 'executionTasks': len(executions()), 'newExecutionTasks': len({item['id'] for item in executions()} - before_executions), 'notifications': len(notifications()),
                     'customTemplate': [text.startswith('ALERT|') or 'ALERT|' in text for text in notifications()]}), flush=True)
                 assert len(notifications()) == expected_notifications, 'Unexpected notification count'
                 print(f'Completed HTTP {status} round; notifications={expected_notifications}', flush=True)
@@ -156,7 +161,9 @@ def main():
             run_round(503, 1)
             text = notifications()[0]
             for expected in ['ALERT|Scheduled acceptance|2|2', 'Synthetic health API', 'GET', '/check', '503', '200']:
-                assert expected in text, 'Missing request detail: ' + expected
+                if expected not in text:
+                    print('Synthetic notification: ' + re.sub(r'token=[^&\s]+', 'token=[redacted]', text[:1600]), flush=True)
+                    raise AssertionError('Missing request detail: ' + expected)
             assert 'synthetic-secret' not in text and '${' not in text, 'Unsafe or unresolved template data'
             run_round(503, 1)
             run_round(200, 1)  # Success notification is disabled; recovery must still reset the streak.
@@ -196,6 +203,7 @@ def main():
             def plan_round(status, expected_notifications):
                 mock.api('/mode/' + str(status))
                 before = {item['id'] for item in plan_reports()}
+                plan_schedule['cron'] = one_shot_cron()
                 plan_schedule['enable'] = True
                 client.api('/test-plan/schedule-config', plan_schedule)
                 try:
@@ -214,7 +222,9 @@ def main():
             plan_round(503, 3)
             text = notifications()[-1]
             for expected in ['PLAN|Scheduled plan acceptance|2|2', 'Synthetic health API', '/check', '503']:
-                assert expected in text, 'Missing plan failure detail: ' + expected
+                if expected not in text:
+                    print('Synthetic plan notification: ' + re.sub(r'token=[^&\s]+', 'token=[redacted]', text[:1600]), flush=True)
+                    raise AssertionError('Missing plan failure detail: ' + expected)
             plan_round(200, 3)
             plan_round(503, 3)
             plan_round(503, 4)

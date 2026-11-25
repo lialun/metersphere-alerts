@@ -25,19 +25,21 @@ class ScheduledAlertServiceTest {
         when(mapper.addResult(anyString(), any())).thenAnswer(call -> {
             Map<String, ScheduledAlertResult> history = histories.computeIfAbsent(call.getArgument(0), key -> new HashMap<>());
             ScheduledAlertResult result = call.getArgument(1);
-            return history.putIfAbsent(result.getReportId(), result) == null ? 1 : 0;
+            return history.compute(result.getExecutionId(), (key, old) -> { if (old == null || result.getEndTime() >= old.getEndTime()) { result.setNotified(old != null && old.isNotified()); return result; } return old; }) == result ? 1 : 0;
         });
         doAnswer(call -> {
             Map<String, ScheduledAlertResult> history = histories.get(call.getArgument(0));
             List<ScheduledAlertResult> rows = call.getArgument(1);
-            rows.forEach(row -> history.putIfAbsent(row.getReportId(), row)); return null;
+            rows.forEach(row -> history.compute(row.getExecutionId(), (key, old) -> { if (old == null || row.getEndTime() >= old.getEndTime()) { row.setNotified(old != null && old.isNotified()); return row; } return old; })); return null;
         }).when(mapper).addResults(anyString(), anyList());
+        doAnswer(call -> { histories.get(call.getArgument(0)).get(call.getArgument(1)).setNotified(true); return null; })
+                .when(mapper).markNotified(anyString(), anyString());
         when(mapper.latestResults(anyString())).thenAnswer(call -> histories.get(call.getArgument(0)).values().stream()
                 .sorted(Comparator.comparingLong(ScheduledAlertResult::getEndTime).reversed()
                         .thenComparing(ScheduledAlertResult::getReportId, Comparator.reverseOrder())).limit(100).toList());
         doAnswer(call -> {
             ScheduledAlertState state = states.get(call.getArgument(0));
-            state.setLastNotifiedReport(call.getArgument(1)); state.setLastRecoveryTime(call.getArgument(2)); return null;
+            state.setLastNotifiedExecution(call.getArgument(1)); state.setLastRecoveryTime(call.getArgument(2)); return null;
         }).when(mapper).notified(anyString(), nullable(String.class), anyLong());
     }
     ScheduledAlertDecision result(String id, long time, boolean failed) { return result("resource", "env", id, time, failed); }
@@ -88,6 +90,26 @@ class ScheduledAlertServiceTest {
         assertNull(result("ok", 200, false));
         assertNull(result("new1", 201, true));
         assertNotNull(result("new2", 202, true));
+    }
+    @Test void interleavedLateReportsCannotRenotifyAnExecution() {
+        policy.setFailureThreshold(1);
+        for (int i=1; i<=3; i++) {
+            ScheduledAlertResult report = new ScheduledAlertResult(); report.setReportId("late-report" + i);
+            report.setExecutionId(i == 2 ? "second-round" : "first-round");
+            report.setEndTime(i); report.setFailed(true);
+            ScheduledAlertDecision decision = service.record("project", "API_SCENARIO_TASK", "resource", "env", report, List.of());
+            if (i <= 2) { assertNotNull(decision); } else { assertNull(decision); }
+        }
+    }
+    @Test void multipleReportsFromOneExecutionCountOnce() {
+        for (int i=1; i<=4; i++) {
+            ScheduledAlertResult report = new ScheduledAlertResult(); report.setReportId("report" + i);
+            report.setExecutionId(i <= 2 ? "round-one" : "round-two");
+            report.setEndTime(i); report.setFailed(true);
+            ScheduledAlertDecision decision = service.record("project", "API_SCENARIO_TASK", "resource", "env", report, List.of());
+            if (i == 3) { assertEquals(2, decision.consecutiveFailures()); }
+            else { assertNull(decision); }
+        }
     }
     @Test void defaultPolicyAndThresholdOnePreserveImmediateAlerts() {
         policy.setFailureThreshold(1);
