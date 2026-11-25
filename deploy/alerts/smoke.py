@@ -75,7 +75,7 @@ def main():
                    '--add-modules', 'jdk.httpserver', '-cp', '/mock', 'AlertMock')
             docker('run', '-d', '--name', app, '--label', 'codex.verification=' + run, '--network', run,
                    '--memory', '4g', '--cpus', '2', '--pids-limit', '2048',
-                   '-e', 'JAVA_TOOL_OPTIONS=-Xms128m -Xmx512m', args.image)
+                   '-e', 'JAVA_TOOL_OPTIONS=-Xms128m -Xmx512m -Dlogging.level.io.metersphere.api.service.ApiReportSendNoticeService=DEBUG', args.image)
             ip = lambda name: docker('inspect', '--format', '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}', name)
             client = Client('http://' + ip(app) + ':8081')
             mock = Client('http://' + ip(sink) + ':8080')
@@ -224,6 +224,12 @@ def main():
             assets = re.findall(r'assets/[^"\s]+\.js', expected)
             assert assets and assets[0] in actual, 'Rebuilt frontend is not served by the image'
             print('PASS: threshold, once-until-recovery, custom failed-request content, secret omission and frontend assets', flush=True)
+        except Exception:
+            logs = subprocess.run(['docker', 'logs', app], capture_output=True, text=True)
+            for line in (logs.stdout + logs.stderr).splitlines():
+                if 'Scheduled alert metadata:' in line:
+                    print(line, flush=True)
+            raise
         finally:
             for name in [app, sink]:
                 subprocess.run(['docker', 'rm', '-f', name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

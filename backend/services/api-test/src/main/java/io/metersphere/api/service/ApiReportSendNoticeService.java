@@ -14,6 +14,7 @@ import io.metersphere.sdk.domain.Environment;
 import io.metersphere.sdk.dto.api.notice.ApiNoticeDTO;
 import io.metersphere.sdk.mapper.EnvironmentMapper;
 import io.metersphere.sdk.util.BeanUtils;
+import io.metersphere.sdk.util.LogUtils;
 import io.metersphere.sdk.util.CommonBeanFactory;
 import io.metersphere.sdk.util.Translator;
 import io.metersphere.system.domain.User;
@@ -80,6 +81,11 @@ public class ApiReportSendNoticeService {
             ApiReport actual = apiReportMapper.selectByPrimaryKey(noticeDTO.getReportId());
             if (actual != null) { scheduledReport = BeanUtils.copyBean(new ApiScenarioReport(), actual); }
         }
+        LogUtils.debug("Scheduled alert metadata: resourceType=" + noticeDTO.getResourceType()
+                + "; triggerMode=" + (scheduledReport == null ? "missing" : scheduledReport.getTriggerMode())
+                + "; execStatus=" + (scheduledReport == null ? "missing" : scheduledReport.getExecStatus())
+                + "; result=" + noticeDTO.getReportStatus() + "; rerun=" + noticeDTO.getRerun()
+                + "; endTime=" + (scheduledReport == null ? "missing" : scheduledReport.getEndTime()));
         if (scheduledReport != null && "SCHEDULE".equals(scheduledReport.getTriggerMode())
                 && "COMPLETED".equals(scheduledReport.getExecStatus()) && !Boolean.TRUE.equals(noticeDTO.getRerun())) {
             ScheduledAlertResult result = new ScheduledAlertResult();
