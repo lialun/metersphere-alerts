@@ -22,7 +22,7 @@ public interface ScheduledAlertMapper {
         """)
     int savePolicy(ScheduledAlertPolicy policy);
 
-    @Insert("INSERT IGNORE INTO scheduled_alert_state(scope_key, project_id, task_type) VALUES(#{scope}, #{projectId}, #{taskType})")
+    @Insert("INSERT INTO scheduled_alert_state(scope_key, project_id, task_type) VALUES(#{scope}, #{projectId}, #{taskType}) ON DUPLICATE KEY UPDATE scope_key=VALUES(scope_key)")
     void createState(@Param("scope") String scope, @Param("projectId") String projectId, @Param("taskType") String taskType);
 
     @Select("SELECT * FROM scheduled_alert_state WHERE scope_key=#{scope} FOR UPDATE")

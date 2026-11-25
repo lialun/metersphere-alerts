@@ -6,6 +6,7 @@ import io.metersphere.system.mapper.ScheduledAlertMapper;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 import java.util.*;
 import java.util.regex.*;
 
@@ -64,11 +65,13 @@ public class ScheduledAlertService {
     }
 
     /**
+     * The state upsert acquires an exclusive lock immediately (INSERT IGNORE would upgrade a shared lock).
+     * READ_COMMITTED keeps the history query fresh after a concurrent callback commits while we wait.
      * A lock serializes concurrent callbacks; unique report IDs make Kafka redelivery idempotent.
      * Ordering uses persisted execution completion time, not callback arrival time. A late callback
      * can complete a streak and nominate the latest failed report, rather than send stale content.
      */
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public ScheduledAlertDecision record(String projectId, String taskType, String resourceId, String environment,
                                          ScheduledAlertResult result) {
         ScheduledAlertPolicy policy = getPolicy(projectId, taskType);
