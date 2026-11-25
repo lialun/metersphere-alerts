@@ -5,6 +5,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: scheduled-alerts-${{ github.ref }}
   cancel-in-progress: true
@@ -51,13 +52,50 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
+      - name: Identify frontend source
+        id: frontend-source
+        run: |
+          task_frontend_tree=$(git rev-parse HEAD:frontend)
+          task_root_pom=$(git rev-parse HEAD:pom.xml)
+          echo "key=${task_frontend_tree}-${task_root_pom}" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v6.1.0
         id: frontend-cache
         with:
           path: frontend/dist
-          key: alert-frontend-${{ runner.os }}-${{ hashFiles('frontend/**', 'pom.xml') }}
-      - name: Type-check and build frontend with the project toolchain
+          key: alert-frontend-${{ runner.os }}-${{ steps.frontend-source.outputs.key }}
+      - name: Reuse an existing build of identical frontend source
         if: steps.frontend-cache.outputs.cache-hit != 'true'
+        id: frontend-artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PYCODE'
+          import json, os, subprocess
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+          expected = (git('rev-parse', 'HEAD:frontend'), git('rev-parse', 'HEAD:pom.xml'))
+          artifacts = json.loads(subprocess.check_output(['gh', 'api', 'repos/' + os.environ['GH_REPO'] + '/actions/artifacts?name=alert-frontend&per_page=10']))['artifacts']
+          for artifact in artifacts:
+              if artifact['expired']: continue
+              run = artifact.get('workflow_run') or {}
+              sha = run.get('head_sha')
+              if not sha or run.get('repository_id') != run.get('head_repository_id'): continue
+              subprocess.run(['git', 'fetch', '--no-tags', '--depth=1', 'origin', sha], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+              if (git('rev-parse', sha + ':frontend'), git('rev-parse', sha + ':pom.xml')) == expected:
+                  with open(os.environ['GITHUB_OUTPUT'], 'a') as output: output.write('run-id=' + str(run['id']) + '\n')
+                  print('Reusing previously built artifact with matching frontend and root POM trees')
+                  break
+          PYCODE
+      - uses: actions/download-artifact@v8.0.2
+        if: steps.frontend-artifact.outputs.run-id != ''
+        with:
+          name: alert-frontend
+          run-id: ${{ steps.frontend-artifact.outputs.run-id }}
+          github-token: ${{ github.token }}
+          path: frontend/dist/
+      - name: Type-check and build frontend with the project toolchain
+        if: steps.frontend-cache.outputs.cache-hit != 'true' && steps.frontend-artifact.outputs.run-id == ''
         run: mvn -B -ntp -Drevision=3.6.10-lts -Dmaven.test.skip=true -pl frontend package
       - uses: actions/upload-artifact@v7.0.2
         with:
