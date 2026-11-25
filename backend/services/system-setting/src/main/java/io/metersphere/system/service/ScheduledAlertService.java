@@ -73,7 +73,7 @@ public class ScheduledAlertService {
      */
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public ScheduledAlertDecision record(String projectId, String taskType, String resourceId, String environment,
-                                         ScheduledAlertResult result) {
+                                         ScheduledAlertResult result, List<ScheduledAlertResult> completedResults) {
         ScheduledAlertPolicy policy = getPolicy(projectId, taskType);
         if (result.getEndTime() < policy.getUpdatedTime()) { return null; }
         String scope = DigestUtils.sha256Hex(String.join("\n", projectId, taskType, resourceId,
@@ -81,6 +81,11 @@ public class ScheduledAlertService {
         mapper.createState(scope, projectId, taskType);
         ScheduledAlertState state = mapper.lockState(scope);
         if (mapper.addResult(scope, result) == 0) { return null; }
+        // Reports, rather than message arrival, determine continuity: a delayed success callback
+        // must not turn fail/success/fail into a false consecutive-failure alert.
+        List<ScheduledAlertResult> backfill = completedResults.stream()
+                .filter(item -> item.getEndTime() >= policy.getUpdatedTime()).toList();
+        if (!backfill.isEmpty()) { mapper.addResults(scope, backfill); }
         List<ScheduledAlertResult> results = mapper.latestResults(scope);
         mapper.pruneResults(scope);
         int count = 0;

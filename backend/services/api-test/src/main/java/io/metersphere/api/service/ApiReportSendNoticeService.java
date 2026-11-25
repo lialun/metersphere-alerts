@@ -90,7 +90,9 @@ public class ApiReportSendNoticeService {
                     String.valueOf(noticeDTO.getRunModeConfig().getGrouped()) + ":") + scheduledReport.getEnvironmentId();
             ScheduledAlertDecision decision = scheduledAlertService.record(noticeDTO.getProjectId(),
                     scenarioResult ? NoticeConstants.TaskType.API_SCENARIO_TASK : NoticeConstants.TaskType.API_DEFINITION_TASK,
-                    noticeDTO.getResourceId(), scopeEnvironment, result);
+                    noticeDTO.getResourceId(), scopeEnvironment, result,
+                    apiFailureDetailService.completedResults(noticeDTO.getProjectId(), noticeDTO.getResourceId(),
+                            scheduledReport.getEnvironmentId(), scenarioResult));
             if (result.isFailed() && decision == null) { return; } // Listener continues the execution queue.
             if (decision != null) {
                 alert = decision;

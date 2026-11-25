@@ -4,6 +4,7 @@ import io.metersphere.api.domain.ApiReportDetail;
 import io.metersphere.api.mapper.AlertReportDetailMapper;
 import io.metersphere.sdk.dto.api.result.*;
 import io.metersphere.api.utils.ApiDataUtils;
+import io.metersphere.system.dto.ScheduledAlertResult;
 import org.springframework.stereotype.Service;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -14,6 +15,14 @@ import java.util.*;
 public class ApiFailureDetailService {
     private final AlertReportDetailMapper mapper;
     public ApiFailureDetailService(AlertReportDetailMapper mapper) { this.mapper = mapper; }
+
+    public List<ScheduledAlertResult> completedResults(String project, String resource, String environment, boolean scenario) {
+        return scenario ? mapper.completedScenarios(project, resource, environment) : mapper.completedCases(project, resource, environment);
+    }
+
+    public List<ScheduledAlertResult> completedPlanResults(String project, String resource) {
+        return mapper.completedPlans(project, resource);
+    }
 
     public String reportFailures(String reportId) {
         List<ApiReportDetail> details = mapper.failures(reportId);

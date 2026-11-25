@@ -27,6 +27,11 @@ class ScheduledAlertServiceTest {
             ScheduledAlertResult result = call.getArgument(1);
             return history.putIfAbsent(result.getReportId(), result) == null ? 1 : 0;
         });
+        doAnswer(call -> {
+            Map<String, ScheduledAlertResult> history = histories.get(call.getArgument(0));
+            List<ScheduledAlertResult> rows = call.getArgument(1);
+            rows.forEach(row -> history.putIfAbsent(row.getReportId(), row)); return null;
+        }).when(mapper).addResults(anyString(), anyList());
         when(mapper.latestResults(anyString())).thenAnswer(call -> histories.get(call.getArgument(0)).values().stream()
                 .sorted(Comparator.comparingLong(ScheduledAlertResult::getEndTime).reversed()
                         .thenComparing(ScheduledAlertResult::getReportId, Comparator.reverseOrder())).limit(100).toList());
@@ -39,7 +44,7 @@ class ScheduledAlertServiceTest {
     ScheduledAlertDecision result(String resource, String env, String id, long time, boolean failed) {
         ScheduledAlertResult item = new ScheduledAlertResult();
         item.setReportId(id); item.setEndTime(time); item.setFailed(failed);
-        return service.record("project", "API_SCENARIO_TASK", resource, env, item);
+        return service.record("project", "API_SCENARIO_TASK", resource, env, item, List.of());
     }
     @Test void thresholdRecoveryAndRedelivery() {
         assertNull(result("1", 1, true));
@@ -66,6 +71,14 @@ class ScheduledAlertServiceTest {
         assertNull(result("late", 15, true));
         assertNull(result("next", 40, true));
         assertNotNull(result("next2", 50, true));
+    }
+    @Test void persistedSuccessBreaksStreakBeforeItsCallbackArrives() {
+        assertNull(result("1", 1, true));
+        ScheduledAlertResult success = new ScheduledAlertResult(); success.setReportId("2"); success.setEndTime(2);
+        ScheduledAlertResult failure = new ScheduledAlertResult(); failure.setReportId("3"); failure.setEndTime(3); failure.setFailed(true);
+        assertNull(service.record("project", "API_SCENARIO_TASK", "resource", "env", failure, List.of(success)));
+        assertNull(result("2", 2, false));
+        assertEquals(2, result("4", 4, true).consecutiveFailures());
     }
     @Test void onceUntilRecoveryEvenAfterHistoryWindow() {
         policy.setRepeatNotifications(false);

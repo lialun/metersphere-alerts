@@ -58,7 +58,7 @@ class ScheduledAlertMysqlIT {
     ScheduledAlertDecision result(String project, String resource, String env, String id, boolean failed) {
         ScheduledAlertResult result = new ScheduledAlertResult(); result.setReportId(id);
         result.setEndTime(clock + Integer.parseInt(id)); result.setFailed(failed);
-        return service.record(project, "API_SCENARIO_TASK", resource, env, result);
+        return service.record(project, "API_SCENARIO_TASK", resource, env, result, List.of());
     }
     void policy(int threshold, boolean repeat) {
         ScheduledAlertPolicy policy = service.getPolicy("project", "API_SCENARIO_TASK");
@@ -71,7 +71,7 @@ class ScheduledAlertMysqlIT {
         try (AnnotationConfigApplicationContext restarted = new AnnotationConfigApplicationContext(Config.class)) {
             ScheduledAlertResult result = new ScheduledAlertResult(); result.setReportId("2"); result.setEndTime(clock+2); result.setFailed(true);
             assertEquals(2, restarted.getBean(ScheduledAlertService.class)
-                    .record("project", "API_SCENARIO_TASK", "resource", "env", result).consecutiveFailures());
+                    .record("project", "API_SCENARIO_TASK", "resource", "env", result, List.of()).consecutiveFailures());
         }
         assertNull(result("2", true)); assertNull(result("3", false)); assertNull(result("4", true));
         assertNotNull(result("5", true));
@@ -83,6 +83,15 @@ class ScheduledAlertMysqlIT {
         assertNull(result("project", "resource", "other", "3", true));
         assertNotNull(result("other", "resource", "env", "4", true)); // default threshold 1
         policy(2, true); assertNull(result("5", true));
+    }
+    @Test void persistedSuccessBreaksStreakBeforeCallbackDelivery() {
+        policy(2, true);
+        assertNull(result("1", true));
+        ScheduledAlertResult success = new ScheduledAlertResult(); success.setReportId("2"); success.setEndTime(clock+2);
+        ScheduledAlertResult failure = new ScheduledAlertResult(); failure.setReportId("3"); failure.setEndTime(clock+3); failure.setFailed(true);
+        assertNull(service.record("project", "API_SCENARIO_TASK", "resource", "env", failure, List.of(success)));
+        assertNull(result("2", false));
+        assertEquals(2, result("4", true).consecutiveFailures());
     }
     @Test void optimisticEditsAndTemplateValidation() {
         ScheduledAlertPolicy stale = service.getPolicy("project", "API_SCENARIO_TASK");

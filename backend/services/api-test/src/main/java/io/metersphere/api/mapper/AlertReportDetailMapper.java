@@ -1,6 +1,7 @@
 package io.metersphere.api.mapper;
 
 import io.metersphere.api.domain.ApiReportDetail;
+import io.metersphere.system.dto.ScheduledAlertResult;
 import org.apache.ibatis.annotations.*;
 import java.util.List;
 
@@ -33,6 +34,34 @@ public interface AlertReportDetailMapper {
         ORDER BY pos LIMIT 20
         """)
     List<String> planScenarioReports(String reportId);
+
+    @Select("""
+        SELECT r.id AS report_id, r.end_time, (r.status='ERROR') AS failed
+        FROM api_report r JOIN api_test_case_record c ON c.api_report_id=r.id
+        WHERE r.project_id=#{project} AND c.api_test_case_id=#{resource} AND r.environment_id <=> #{environment}
+          AND r.trigger_mode='SCHEDULE' AND r.exec_status='COMPLETED'
+        ORDER BY r.end_time DESC, r.id DESC LIMIT 100
+        """)
+    List<ScheduledAlertResult> completedCases(@Param("project") String project, @Param("resource") String resource,
+                                            @Param("environment") String environment);
+
+    @Select("""
+        SELECT r.id AS report_id, r.end_time, (r.status='ERROR') AS failed
+        FROM api_scenario_report r JOIN api_scenario_record c ON c.api_scenario_report_id=r.id
+        WHERE r.project_id=#{project} AND c.api_scenario_id=#{resource} AND r.environment_id <=> #{environment}
+          AND r.trigger_mode='SCHEDULE' AND r.exec_status='COMPLETED'
+        ORDER BY r.end_time DESC, r.id DESC LIMIT 100
+        """)
+    List<ScheduledAlertResult> completedScenarios(@Param("project") String project, @Param("resource") String resource,
+                                                @Param("environment") String environment);
+
+    @Select("""
+        SELECT id AS report_id, end_time, (result_status!='SUCCESS') AS failed
+        FROM test_plan_report WHERE project_id=#{project} AND test_plan_id=#{resource}
+          AND trigger_mode='SCHEDULE' AND exec_status='COMPLETED'
+        ORDER BY end_time DESC, id DESC LIMIT 100
+        """)
+    List<ScheduledAlertResult> completedPlans(@Param("project") String project, @Param("resource") String resource);
 
     @Select("SELECT id FROM test_plan_report WHERE parent_id=#{reportId} ORDER BY start_time LIMIT 20")
     List<String> childPlanReports(String reportId);

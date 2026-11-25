@@ -34,6 +34,16 @@ public interface ScheduledAlertMapper {
         """)
     int addResult(@Param("scope") String scope, @Param("result") ScheduledAlertResult result);
 
+    @Insert("""
+        <script>
+        INSERT IGNORE INTO scheduled_alert_result(scope_key, report_id, end_time, failed) VALUES
+        <foreach collection="results" item="result" separator=",">
+          (#{scope}, #{result.reportId}, #{result.endTime}, #{result.failed})
+        </foreach>
+        </script>
+        """)
+    void addResults(@Param("scope") String scope, @Param("results") List<ScheduledAlertResult> results);
+
     @Select("SELECT report_id, end_time, failed FROM scheduled_alert_result WHERE scope_key=#{scope} ORDER BY end_time DESC, report_id DESC LIMIT 100")
     List<ScheduledAlertResult> latestResults(String scope);
 

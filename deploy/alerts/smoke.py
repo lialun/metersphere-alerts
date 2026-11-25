@@ -51,7 +51,8 @@ class Client:
         if isinstance(result, dict) and 'code' in result:
             if result['code'] != 100200:
                 # Do not dump arbitrary login/session/result data into CI logs.
-                raise RuntimeError(f'{path}: application code {result["code"]}')
+                message = re.sub(r'(?i)(token|password|sessionId|csrfToken)[=: ]+[^ ,;]+', r'\1=[redacted]', str(result.get('message', '')))
+                raise RuntimeError(f'{path}: application code {result["code"]}: {message[:200]}')
             return result.get('data')
         return result
 

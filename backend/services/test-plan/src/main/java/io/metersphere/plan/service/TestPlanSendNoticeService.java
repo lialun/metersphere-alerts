@@ -219,7 +219,8 @@ public class TestPlanSendNoticeService {
             result.setEndTime(report.getEndTime());
             result.setFailed(!ResultStatus.SUCCESS.name().equals(report.getResultStatus()));
             ScheduledAlertDecision decision = scheduledAlertService.record(report.getProjectId(),
-                    NoticeConstants.TaskType.TEST_PLAN_TASK, planId, "plan", result);
+                    NoticeConstants.TaskType.TEST_PLAN_TASK, planId, "plan", result,
+                    apiFailureDetailService.completedPlanResults(report.getProjectId(), planId));
             if (result.isFailed() && decision == null) { return; }
             if (decision != null) {
                 alert = decision;
