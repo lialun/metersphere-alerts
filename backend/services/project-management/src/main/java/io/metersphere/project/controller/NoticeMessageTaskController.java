@@ -2,6 +2,8 @@ package io.metersphere.project.controller;
 
 
 import io.metersphere.project.dto.MessageTaskDTO;
+import io.metersphere.system.dto.ScheduledAlertPolicy;
+import io.metersphere.system.service.ScheduledAlertService;
 import io.metersphere.project.dto.MessageTemplateConfigDTO;
 import io.metersphere.project.service.MessageTaskLogService;
 import io.metersphere.project.service.NoticeMessageTaskService;
@@ -34,6 +36,23 @@ import java.util.List;
 public class NoticeMessageTaskController {
     @Resource
     private NoticeMessageTaskService noticeMessageTaskService;
+
+    @Resource
+    private ScheduledAlertService scheduledAlertService;
+
+    @GetMapping("scheduled-alert/{projectId}/{taskType}")
+    @RequiresPermissions(PermissionConstants.PROJECT_MESSAGE_READ)
+    @CheckOwner(resourceId = "#projectId", resourceType = "project")
+    public ScheduledAlertPolicy getScheduledAlert(@PathVariable String projectId, @PathVariable String taskType) {
+        return scheduledAlertService.getPolicy(projectId, taskType);
+    }
+
+    @PostMapping("scheduled-alert")
+    @RequiresPermissions(PermissionConstants.PROJECT_MESSAGE_READ_UPDATE)
+    @CheckOwner(resourceId = "#policy.projectId", resourceType = "project")
+    public ScheduledAlertPolicy saveScheduledAlert(@Validated @RequestBody ScheduledAlertPolicy policy) {
+        return scheduledAlertService.savePolicy(policy);
+    }
 
     @PostMapping("message/task/save")
     @Operation(summary = "项目管理-消息管理-消息设置-保存消息设置")

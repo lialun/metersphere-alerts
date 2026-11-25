@@ -85,6 +85,9 @@ public abstract class AbstractNoticeSender implements NoticeSender {
         handleCustomFields(noticeModel);
         // 处理 userIds 中包含的特殊值
         noticeModel.setReceivers(getRealUserIds(messageDetail, noticeModel, messageDetail.getEvent()));
+        if (noticeModel.getScheduledAlertContent() != null) {
+            return noticeModel.getScheduledAlertContent();
+        }
         // 如果配置了模版就直接使用模版
         if (StringUtils.isNotBlank(messageDetail.getTemplate())) {
             return MessageTemplateUtils.getContent(messageDetail.getTemplate(), noticeModel.getParamMap());

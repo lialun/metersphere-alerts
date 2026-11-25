@@ -1,4 +1,20 @@
 export default {
+  'project.scheduledAlert.settings': 'Scheduled alert policy',
+  'project.scheduledAlert.type': 'Alert type',
+  'project.scheduledAlert.case': 'API cases',
+  'project.scheduledAlert.scenario': 'API scenarios',
+  'project.scheduledAlert.plan': 'Test plans / groups',
+  'project.scheduledAlert.scope':
+    'Scheduled runs only. Counters are isolated by task and API environment; plans use collection environments. Success or false positives reset the streak. Saving a policy starts a new streak.',
+  'project.scheduledAlert.threshold': 'Consecutive failed runs before alerting (1–100)',
+  'project.scheduledAlert.repeat':
+    'Notify on every failure after the threshold (uncheck to notify once until recovery)',
+  'project.scheduledAlert.template': 'Failure notification template',
+  'project.scheduledAlert.defaultTemplate': 'Leave blank for the default template with failed requests and causes',
+  'project.scheduledAlert.variables':
+    'Click to insert variables. URLs omit query parameters; bodies and headers are excluded.',
+  'project.scheduledAlert.useExample': 'Use example template',
+
   'project.messageManagement': 'Message management',
   'project.messageManagement.config': 'Message settings',
   'project.messageManagement.botList': 'Robot list',

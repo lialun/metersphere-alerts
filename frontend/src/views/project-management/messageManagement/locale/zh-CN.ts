@@ -1,4 +1,18 @@
 export default {
+  'project.scheduledAlert.settings': '定时告警策略',
+  'project.scheduledAlert.type': '告警类型',
+  'project.scheduledAlert.case': '接口用例',
+  'project.scheduledAlert.scenario': '接口场景',
+  'project.scheduledAlert.plan': '测试计划 / 计划组',
+  'project.scheduledAlert.scope':
+    '仅对定时执行生效。每个任务单独累计；接口用例和场景按环境隔离，计划使用其集合环境。成功或误报会清零。保存策略后重新累计。',
+  'project.scheduledAlert.threshold': '连续失败多少轮才告警（1–100）',
+  'project.scheduledAlert.repeat': '达到阈值后，每轮失败继续通知（取消后仅首次通知，成功后可重新告警）',
+  'project.scheduledAlert.template': '失败通知模板',
+  'project.scheduledAlert.defaultTemplate': '留空使用包含失败接口和原因的默认模板',
+  'project.scheduledAlert.variables': '点击插入变量。地址省略查询参数；请求/响应正文与请求头不进入通知。',
+  'project.scheduledAlert.useExample': '使用示例模板',
+
   'project.messageManagement': '消息管理',
   'project.messageManagement.config': '消息设置',
   'project.messageManagement.botList': '机器人列表',
