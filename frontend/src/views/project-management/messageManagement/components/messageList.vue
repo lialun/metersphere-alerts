@@ -11,6 +11,7 @@
       <div class="font-medium text-[var(--color-text-1)]">{{ t('project.messageManagement.config') }}</div>
     </template>
     <template #headerRight>
+      <ScheduledAlert />
       <MsSelect
         v-model:model-value="robotFilters"
         :options="robotOptions"
@@ -132,6 +133,7 @@
   import MsTagGroup from '@/components/pure/ms-tag/ms-tag-group.vue';
   import MsSelect from '@/components/business/ms-select';
   import MessagePreview from './messagePreview.vue';
+  import ScheduledAlert from './scheduledAlert.vue';
 
   import {
     getMessageList,

@@ -17,6 +17,9 @@ import io.metersphere.sdk.util.BeanUtils;
 import io.metersphere.sdk.util.CommonBeanFactory;
 import io.metersphere.sdk.util.Translator;
 import io.metersphere.system.domain.User;
+import io.metersphere.system.dto.ScheduledAlertDecision;
+import io.metersphere.system.dto.ScheduledAlertResult;
+import io.metersphere.system.service.ScheduledAlertService;
 import io.metersphere.system.dto.sdk.ApiDefinitionCaseDTO;
 import io.metersphere.system.dto.sdk.BaseSystemConfigDTO;
 import io.metersphere.system.mapper.UserMapper;
@@ -60,7 +63,41 @@ public class ApiReportSendNoticeService {
     @Resource
     private ApiDefinitionMapper apiDefinitionMapper;
 
+    @Resource
+    private ScheduledAlertService scheduledAlertService;
+    @Resource
+    private ApiFailureDetailService apiFailureDetailService;
+
     public void sendNotice(ApiNoticeDTO noticeDTO) {
+        noticeDTO = BeanUtils.copyBean(new ApiNoticeDTO(), noticeDTO);
+        ScheduledAlertDecision alert = null;
+        boolean scenarioResult = ApiExecuteResourceType.API_SCENARIO.name().equals(noticeDTO.getResourceType());
+        boolean caseResult = ApiExecuteResourceType.API_CASE.name().equals(noticeDTO.getResourceType());
+        ApiScenarioReport scheduledReport = null;
+        if (scenarioResult) {
+            scheduledReport = apiScenarioReportMapper.selectByPrimaryKey(noticeDTO.getReportId());
+        } else if (caseResult) {
+            ApiReport actual = apiReportMapper.selectByPrimaryKey(noticeDTO.getReportId());
+            if (actual != null) { scheduledReport = BeanUtils.copyBean(new ApiScenarioReport(), actual); }
+        }
+        if (scheduledReport != null && "SCHEDULE".equals(scheduledReport.getTriggerMode())
+                && "COMPLETED".equals(scheduledReport.getExecStatus()) && !Boolean.TRUE.equals(noticeDTO.getRerun())) {
+            ScheduledAlertResult result = new ScheduledAlertResult();
+            result.setReportId(scheduledReport.getId());
+            result.setEndTime(scheduledReport.getEndTime());
+            result.setFailed("ERROR".equals(scheduledReport.getStatus()));
+            String scopeEnvironment = (noticeDTO.getRunModeConfig() == null ? "" :
+                    String.valueOf(noticeDTO.getRunModeConfig().getGrouped()) + ":") + scheduledReport.getEnvironmentId();
+            ScheduledAlertDecision decision = scheduledAlertService.record(noticeDTO.getProjectId(),
+                    scenarioResult ? NoticeConstants.TaskType.API_SCENARIO_TASK : NoticeConstants.TaskType.API_DEFINITION_TASK,
+                    noticeDTO.getResourceId(), scopeEnvironment, result);
+            if (result.isFailed() && decision == null) { return; } // Listener continues the execution queue.
+            if (decision != null) {
+                alert = decision;
+                noticeDTO.setReportId(decision.reportId());
+                noticeDTO.setReportStatus("ERROR");
+            }
+        }
         String noticeType = null;
         SystemParameterService systemParameterService = CommonBeanFactory.getBean(SystemParameterService.class);
         assert systemParameterService != null;
@@ -206,7 +243,7 @@ public class ApiReportSendNoticeService {
         paramMap.put("assertionPassRate", report.getAssertionPassRate());
 
         // TODO 暂时取一个环境处理
-        String environmentId = noticeDTO.getRunModeConfig().getEnvironmentId();
+        String environmentId = noticeDTO.getRunModeConfig() == null ? report.getEnvironmentId() : noticeDTO.getRunModeConfig().getEnvironmentId();
         if (StringUtils.isNotEmpty(environmentId)) {
             Environment environment = environmentMapper.selectByPrimaryKey(environmentId);
             if (environment != null) {
@@ -227,6 +264,13 @@ public class ApiReportSendNoticeService {
         NoticeModel noticeModel = NoticeModel.builder().operator(userId)
                 .context(template).subject(subject).paramMap(paramMap).event(event).build();
 
+        if (alert != null) {
+            paramMap.put("projectName", project.getName());
+            paramMap.put("resourceName", beanMap.get("name"));
+            paramMap.put("failureDetails", apiFailureDetailService.reportFailures(noticeDTO.getReportId()));
+            paramMap.put("failedCount", report.getErrorCount());
+            noticeModel.setScheduledAlertContent(ScheduledAlertService.render(alert, paramMap));
+        }
         noticeSendService.send(project, noticeType, noticeModel);
     }
 

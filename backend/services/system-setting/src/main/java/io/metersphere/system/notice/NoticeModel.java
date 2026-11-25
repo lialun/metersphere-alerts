@@ -35,6 +35,9 @@ public class NoticeModel implements Serializable {
      */
     private String context;
 
+    /** Pre-rendered scheduled failure text; never interpolate result data twice. */
+    private String scheduledAlertContent;
+
     /**
      * 保存特殊的用户
      */

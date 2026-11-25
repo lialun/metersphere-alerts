@@ -81,3 +81,20 @@ export function getMessageDetail(projectId: string, taskType: string, event: str
 export function saveMessageConfig(data: SaveMessageTemplateParams) {
   return MSR.post({ url: SaveMessageUrl, data });
 }
+
+export interface ScheduledAlertPolicy {
+  revision: number;
+  projectId: string;
+  taskType: string;
+  failureThreshold: number;
+  repeatNotifications: boolean;
+  failureTemplate: string;
+}
+
+export function getScheduledAlert(projectId: string, taskType: string) {
+  return MSR.get<ScheduledAlertPolicy>({ url: `/notice/scheduled-alert/${projectId}/${taskType}` });
+}
+
+export function saveScheduledAlert(policy: ScheduledAlertPolicy) {
+  return MSR.post<ScheduledAlertPolicy>({ url: '/notice/scheduled-alert', data: policy });
+}

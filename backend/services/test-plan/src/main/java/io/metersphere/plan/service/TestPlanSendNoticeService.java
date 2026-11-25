@@ -1,5 +1,10 @@
 package io.metersphere.plan.service;
 
+import io.metersphere.api.service.ApiFailureDetailService;
+import io.metersphere.system.dto.ScheduledAlertDecision;
+import io.metersphere.system.dto.ScheduledAlertResult;
+import io.metersphere.system.service.ScheduledAlertService;
+import io.metersphere.plan.mapper.TestPlanReportMapper;
 import io.metersphere.functional.domain.FunctionalCase;
 import io.metersphere.functional.mapper.FunctionalCaseMapper;
 import io.metersphere.plan.domain.*;
@@ -47,6 +52,14 @@ import java.util.stream.Collectors;
 @Service
 @Transactional(rollbackFor = Exception.class)
 public class TestPlanSendNoticeService {
+    @Resource
+    private ScheduledAlertService scheduledAlertService;
+    @Resource
+    private ApiFailureDetailService apiFailureDetailService;
+    @Resource
+    private TestPlanReportMapper alertReportMapper;
+
+
 
 	@Resource
 	private FunctionalCaseMapper functionalCaseMapper;
@@ -199,6 +212,20 @@ public class TestPlanSendNoticeService {
 	 */
 	@Async
 	public void sendExecuteNotice(String currentUser, String planId, TestPlanReport report) {
+        ScheduledAlertDecision alert = null;
+        if (TaskTriggerMode.SCHEDULE.name().equals(report.getTriggerMode()) && "COMPLETED".equals(report.getExecStatus())) {
+            ScheduledAlertResult result = new ScheduledAlertResult();
+            result.setReportId(report.getId());
+            result.setEndTime(report.getEndTime());
+            result.setFailed(!ResultStatus.SUCCESS.name().equals(report.getResultStatus()));
+            ScheduledAlertDecision decision = scheduledAlertService.record(report.getProjectId(),
+                    NoticeConstants.TaskType.TEST_PLAN_TASK, planId, "plan", result);
+            if (result.isFailed() && decision == null) { return; }
+            if (decision != null) {
+                alert = decision;
+                report = alertReportMapper.selectByPrimaryKey(decision.reportId());
+            }
+        }
 		TestPlan testPlan = testPlanMapper.selectByPrimaryKey(planId);
 		if (testPlan != null) {
 			User user = userMapper.selectByPrimaryKey(currentUser);
@@ -221,6 +248,15 @@ public class TestPlanSendNoticeService {
 			NoticeModel noticeModel = NoticeModel.builder().operator(currentUser).excludeSelf(false)
 					.context(template).subject(subject).paramMap(paramMap).event(StringUtils.equals(report.getResultStatus(), ResultStatus.SUCCESS.name()) ?
 							NoticeConstants.Event.EXECUTE_SUCCESSFUL : NoticeConstants.Event.EXECUTE_FAILED).build();
+            if (alert != null) {
+                Project alertProject = projectMapper.selectByPrimaryKey(report.getProjectId());
+                paramMap.put("projectName", alertProject.getName());
+                paramMap.put("resourceName", testPlan.getName());
+                paramMap.put("environment", "Plan collection environments (see report)");
+                paramMap.put("failureDetails", apiFailureDetailService.planFailures(report.getId()));
+                paramMap.put("failedCount", "See report");
+                noticeModel.setScheduledAlertContent(ScheduledAlertService.render(alert, paramMap));
+            }
 			noticeSendService.send(StringUtils.equals(TaskTriggerMode.API.name(), report.getTriggerMode()) ?
 					NoticeConstants.TaskType.JENKINS_TASK : NoticeConstants.TaskType.TEST_PLAN_TASK, noticeModel);
 		}

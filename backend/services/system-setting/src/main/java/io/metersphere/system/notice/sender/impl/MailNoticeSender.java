@@ -156,6 +156,9 @@ public class MailNoticeSender extends AbstractNoticeSender {
     @Override
     public void send(MessageDetail messageDetail, NoticeModel noticeModel) {
         String context = super.getContext(messageDetail, noticeModel);
+        if (noticeModel.getScheduledAlertContent() != null) {
+            context = "<pre>" + org.springframework.web.util.HtmlUtils.htmlEscape(context) + "</pre>";
+        }
         String subjectText = super.getSubjectText(messageDetail, noticeModel);
         try {
             sendMail(context, noticeModel, messageDetail.getProjectId(), subjectText);

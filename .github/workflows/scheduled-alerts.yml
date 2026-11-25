@@ -1,0 +1,81 @@
+name: Scheduled alerts
+on:
+  push:
+    branches: ['codex/scheduled-alert-policy']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: scheduled-alerts-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6.3.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Install root POM
+        run: mvn -B -ntp -Drevision=3.6.10-lts -N install
+      - name: Compile backend and run unit and MySQL integration tests
+        run: >-
+          mvn -B -ntp -f backend/pom.xml -Drevision=3.6.10-lts
+          -DskipAntRunForJenkins=true -pl services/test-plan -am package
+          -Dtest=ScheduledAlertServiceTest,ScheduledAlertMysqlIT,ApiFailureDetailServiceTest
+          -Dsurefire.failIfNoSpecifiedTests=false -DfailIfNoTests=false
+      - uses: actions/upload-artifact@v7.0.2
+        if: always()
+        with:
+          name: alert-test-reports
+          path: backend/services/*/target/surefire-reports/
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: alert-backend-jars
+          path: |
+            backend/framework/domain/target/metersphere-domain-*.jar
+            backend/services/system-setting/target/metersphere-system-setting-3.6.10-lts.jar
+            backend/services/project-management/target/metersphere-project-management-3.6.10-lts.jar
+            backend/services/api-test/target/metersphere-api-test-3.6.10-lts.jar
+            backend/services/test-plan/target/metersphere-test-plan-3.6.10-lts.jar
+  frontend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6.3.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Type-check and build frontend with the project toolchain
+        run: mvn -B -ntp -Drevision=3.6.10-lts -Dmaven.test.skip=true -pl frontend package
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: alert-frontend
+          path: frontend/dist/
+  acceptance:
+    needs: [backend, frontend]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6.3.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: alert-backend-jars
+          path: backend/
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: alert-frontend
+          path: frontend/dist/
+      - name: Build community runtime image
+        run: docker build -f deploy/alerts/Dockerfile -t metersphere-alerts:acceptance .
+      - name: Exercise real scheduled executions and notification delivery
+        run: python3 deploy/alerts/smoke.py --image metersphere-alerts:acceptance

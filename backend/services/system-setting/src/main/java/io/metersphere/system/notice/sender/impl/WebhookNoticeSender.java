@@ -62,6 +62,9 @@ public class WebhookNoticeSender extends AbstractNoticeSender {
     @Override
     public void send(MessageDetail messageDetail, NoticeModel noticeModel) {
         String context = super.getContext(messageDetail, noticeModel);
+        if (noticeModel.getScheduledAlertContent() != null) {
+            context = io.metersphere.sdk.util.JSON.toJSONString(java.util.Map.of("text", context));
+        }
         send(messageDetail, noticeModel, context);
     }
 
