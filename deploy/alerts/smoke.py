@@ -125,24 +125,31 @@ def main():
             client.api('/api/scenario/schedule-config', schedule)
             def reports():
                 return client.api('/api/report/scenario/page', {'projectId': project, 'current': 1, 'pageSize': 100})['list']
+            def executions():
+                return client.api('/api/scenario/execute/page', {'id': scenario, 'current': 1, 'pageSize': 100})['list']
             def notifications():
                 return [item.get('content', {}).get('text', '') for item in mock.api('/notifications')]
             def run_round(status, expected_notifications):
                 mock.api('/mode/' + str(status))
                 before = {item['id'] for item in reports()}
+                before_executions = {item['id'] for item in executions()}
                 schedule['enable'] = True
                 client.api('/api/scenario/schedule-config', schedule)
                 try:
-                    report = wait_for(lambda: next((item for item in reports() if item['id'] not in before), None), 75)
+                    wait_for(lambda: next((item for item in executions() if item['id'] not in before_executions), None), 75)
                 finally:
                     schedule['enable'] = False
                     client.api('/api/scenario/schedule-config', schedule)
+                report = wait_for(lambda: next((item for item in reports() if item['id'] not in before), None), 75)
                 detail = wait_for(lambda: (item if (item := client.api('/api/report/scenario/get/' + report['id']))
                                           .get('execStatus') == 'COMPLETED' else None), 30)
                 assert detail['status'] == ('SUCCESS' if status == 200 else 'ERROR'), 'Unexpected execution status'
                 if expected_notifications:
                     wait_for(lambda: len(notifications()) >= expected_notifications, 15)
                 time.sleep(2)
+                print(json.dumps({'roundReport': {key: detail.get(key) for key in ['triggerMode', 'runMode', 'execStatus', 'status', 'errorCount']},
+                    'completedReports': len(reports()), 'notifications': len(notifications()),
+                    'customTemplate': [text.startswith('ALERT|') or 'ALERT|' in text for text in notifications()]}), flush=True)
                 assert len(notifications()) == expected_notifications, 'Unexpected notification count'
                 print(f'Completed HTTP {status} round; notifications={expected_notifications}', flush=True)
             run_round(503, 0)
@@ -193,10 +200,11 @@ def main():
                 client.api('/test-plan/schedule-config', plan_schedule)
                 try:
                     report = wait_for(lambda: next((item for item in plan_reports()
-                        if item['id'] not in before and item.get('execStatus') == 'COMPLETED'), None), 90)
+                        if item['id'] not in before), None), 90)
                 finally:
                     plan_schedule['enable'] = False
                     client.api('/test-plan/schedule-config', plan_schedule)
+                report = wait_for(lambda: next((item for item in plan_reports() if item['id'] == report['id'] and item.get('execStatus') == 'COMPLETED'), None), 75)
                 assert (report['resultStatus'] == 'SUCCESS') == (status == 200), 'Unexpected plan result'
                 wait_for(lambda: len(notifications()) >= expected_notifications, 15)
                 time.sleep(2)
