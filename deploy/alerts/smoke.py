@@ -154,6 +154,61 @@ def main():
             run_round(200, 1)  # Success notification is disabled; recovery must still reset the streak.
             run_round(503, 1)
             run_round(503, 2)
+            print('Checking scheduled test-plan aggregation', flush=True)
+            client.api('/notice/message/task/save', {'projectId': project, 'taskType': 'API_SCENARIO_TASK',
+                'event': 'SCENARIO_EXECUTE_FAILED', 'receiverIds': ['admin'], 'robotId': robot, 'enable': False})
+            client.api('/notice/message/task/save', {'projectId': project, 'taskType': 'TEST_PLAN_TASK',
+                'event': 'EXECUTE_FAILED', 'receiverIds': ['admin'], 'robotId': robot, 'enable': True})
+            plan_policy = client.api(f'/notice/scheduled-alert/{project}/TEST_PLAN_TASK')
+            plan_policy.update(failureThreshold=2, repeatNotifications=False,
+                failureTemplate='PLAN|${resourceName}|${consecutiveFailures}|${threshold}\n${failureDetails}')
+            client.api('/notice/scheduled-alert', plan_policy)
+            plan = client.api('/test-plan/add', {'projectId': project, 'name': 'Scheduled plan acceptance',
+                'type': 'TEST_PLAN', 'passThreshold': 100})['id']
+            tree = client.api('/test-plan/mind/data/' + plan)
+            edits = []
+            for root in tree:
+                for category in root.get('children', []):
+                    for level, nodes in [(1, [category]), (2, category.get('children', []))]:
+                        for index, node in enumerate(nodes):
+                            data = dict(node['data'])
+                            data.update(level=level, num=index, extended=False, environmentId=env, grouped=False,
+                                testResourcePoolId=pool['id'], retryOnFail=False, retryType='STEP', retryTimes=0,
+                                retryInterval=0, stopOnFail=False, executeMethod='SERIAL', tempCollectionNode=False)
+                            if level == 2 and data.get('type') == 'SCENARIO':
+                                data['associateDTOS'] = [{'associateType': 'API_SCENARIO', 'projectId': project,
+                                    'moduleMaps': {module: {'selectAll': False, 'selectIds': [scenario]}}}]
+                            edits.append(data)
+            assert any(item.get('associateDTOS') for item in edits), 'No scenario collection found'
+            client.api('/test-plan/mind/data/edit', {'planId': plan, 'editList': edits})
+            plan_schedule = {'resourceId': plan, 'enable': False, 'cron': '0/15 * * * * ?', 'runConfig': {'runMode': 'SERIAL'}}
+            client.api('/test-plan/schedule-config', plan_schedule)
+            def plan_reports():
+                return client.api('/test-plan/report/page', {'projectId': project, 'current': 1, 'pageSize': 100})['list']
+            def plan_round(status, expected_notifications):
+                mock.api('/mode/' + str(status))
+                before = {item['id'] for item in plan_reports()}
+                plan_schedule['enable'] = True
+                client.api('/test-plan/schedule-config', plan_schedule)
+                try:
+                    report = wait_for(lambda: next((item for item in plan_reports()
+                        if item['id'] not in before and item.get('execStatus') == 'COMPLETED'), None), 90)
+                finally:
+                    plan_schedule['enable'] = False
+                    client.api('/test-plan/schedule-config', plan_schedule)
+                assert (report['resultStatus'] == 'SUCCESS') == (status == 200), 'Unexpected plan result'
+                wait_for(lambda: len(notifications()) >= expected_notifications, 15)
+                time.sleep(2)
+                assert len(notifications()) == expected_notifications, 'Unexpected plan notification count'
+                print(f'Completed plan HTTP {status} round; notifications={expected_notifications}', flush=True)
+            plan_round(503, 2)
+            plan_round(503, 3)
+            text = notifications()[-1]
+            for expected in ['PLAN|Scheduled plan acceptance|2|2', 'Synthetic health API', '/check', '503']:
+                assert expected in text, 'Missing plan failure detail: ' + expected
+            plan_round(200, 3)
+            plan_round(503, 3)
+            plan_round(503, 4)
             # Ensure the image serves the rebuilt frontend, rather than silently retaining the original bundle.
             actual = urllib.request.urlopen(client.base + '/', timeout=15).read().decode()
             expected = pathlib.Path('frontend/dist/index.html').read_text()

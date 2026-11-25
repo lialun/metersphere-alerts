@@ -59,7 +59,7 @@ mvn -B -ntp -f backend/pom.xml -Drevision=3.6.10-lts -DskipAntRunForJenkins=true
 mvn -B -ntp -Drevision=3.6.10-lts -Dmaven.test.skip=true -pl frontend package
 ```
 
-MySQL 集成测试需要 Docker，显式加入 `-Dtest=ScheduledAlertServiceTest,ScheduledAlertMysqlIT,ApiFailureDetailServiceTest`。覆盖实际 DDL、MyBatis 映射、事务、跨进程恢复、并发重复/乱序结果、计数隔离、配置版本冲突和保留上限。`.github/workflows/scheduled-alerts.yml` 执行这些检查并保存测试报告与构建产物。
+MySQL 集成测试需要 Docker，显式加入 `-Dtest=ScheduledAlertServiceTest,ScheduledAlertMysqlIT,ApiFailureDetailServiceTest`。覆盖实际 DDL、MyBatis 映射、事务、跨进程恢复、并发重复/乱序结果、计数隔离、配置版本冲突和保留上限。`.github/workflows/scheduled-alerts.yml` 执行这些检查并保存测试报告与构建产物，随后构建全新社区版容器，实际执行场景与测试计划的定时任务，核验阈值、持续故障抑制、成功恢复、自定义失败详情及前端资源。前端构建按源码内容缓存，纯后端修复不重复构建相同前端。
 
 ## 运行打包
 

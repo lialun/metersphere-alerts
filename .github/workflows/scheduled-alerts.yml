@@ -51,7 +51,13 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
+      - uses: actions/cache@v6.1.0
+        id: frontend-cache
+        with:
+          path: frontend/dist
+          key: alert-frontend-${{ runner.os }}-${{ hashFiles('frontend/**', 'pom.xml') }}
       - name: Type-check and build frontend with the project toolchain
+        if: steps.frontend-cache.outputs.cache-hit != 'true'
         run: mvn -B -ntp -Drevision=3.6.10-lts -Dmaven.test.skip=true -pl frontend package
       - uses: actions/upload-artifact@v7.0.2
         with:
