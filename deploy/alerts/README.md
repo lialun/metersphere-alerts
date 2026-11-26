@@ -57,12 +57,12 @@ ${failureDetails}
 mvn -B -ntp -Drevision=3.6.10-lts -N install
 mvn -B -ntp -f backend/pom.xml -Drevision=3.6.10-lts -DskipAntRunForJenkins=true \
   -pl services/test-plan -am package \
-  -Dtest=ScheduledAlertServiceTest,ApiFailureDetailServiceTest \
+  -Dtest=ScheduledAlertServiceTest,ApiFailureDetailServiceTest,LarkNoticeSenderTest,LarkClientTest \
   -Dsurefire.failIfNoSpecifiedTests=false -DfailIfNoTests=false
 mvn -B -ntp -Drevision=3.6.10-lts -Dmaven.test.skip=true -pl frontend package
 ```
 
-MySQL 集成测试需要 Docker，显式加入 `-Dtest=ScheduledAlertServiceTest,ScheduledAlertMysqlIT,ApiFailureDetailServiceTest`。覆盖实际 DDL、MyBatis 映射、事务、跨进程恢复、并发重复/乱序结果、计数隔离、配置版本冲突和保留上限。`.github/workflows/scheduled-alerts.yml` 执行这些检查并保存测试报告与构建产物，随后构建全新社区版容器，实际执行场景与测试计划的定时任务，核验阈值、持续故障抑制、成功恢复、自定义失败详情及前端资源。前端构建按源码内容缓存，纯后端修复不重复构建相同前端。
+MySQL 集成测试需要 Docker，在上述列表中加入 `ScheduledAlertMysqlIT`。覆盖实际 DDL、MyBatis 映射、事务、跨进程恢复、并发重复/乱序结果、计数隔离、配置版本冲突和保留上限。`.github/workflows/scheduled-alerts.yml` 执行这些检查并保存测试报告与构建产物，随后构建全新社区版容器，实际执行场景与测试计划的定时任务，核验阈值、持续故障抑制、成功恢复、自定义失败详情及前端资源。前端构建按源码内容缓存，纯后端修复不重复构建相同前端。
 
 ## 运行打包
 
@@ -80,4 +80,6 @@ docker build -f deploy/alerts/Dockerfile -t metersphere-alerts:3.6.10-lts .
 
 发布器先校验并构建镜像，以实际 UID 1000 检查制品可读性，并在不连接公司网络、不挂载公司配置的临时容器中验收应用启动，通过后才停服。Dockerfile 显式设置 JAR 为 0644、前端文件/目录为 0644/0755，避免安全解包的 0077 umask 导致实际 JVM 无法读到类文件。随后将数据及原配置卷冷备份到实例 `backups/alerts-<UTC>/`（0700/0600），备份完成后切换。配置卷显式复用原卷，健康检查后核对全部挂载身份、JAR 与前端字节。失败恢复原 Compose 和程序镜像，并恢复已有健康定时器；数据库保留向前兼容的新表，不自动回退数据库。备份包含业务敏感数据，应只在受控宿主按现有备份策略管理，不能发布到 GitHub。`python3 -m unittest discover -s deploy/alerts -p 'test_deploy.py'` 验证配置卷保护、制品校验及备份失败恢复。
 
-通知去重保证同一轮执行只尝试派发一次；外部通道的成功交付仍沿用原发送器行为，不承诺在进程崩溃或 Webhook 失败时必达。
+通知去重保证同一轮执行只创建一次派发。飞书发送会校验 HTTP 状态和业务回执（`code=0`，兼容旧版 `StatusCode=0`）；首次失败后最多重试 2 次，共 3 次 HTTP 尝试，默认等待 1 秒、2 秒。网络异常、HTTP 408/429/5xx，以及飞书临时错误或限流码 5000、11232、11233、99991400 可以重试；参数、关键词、签名、权限等明确拒收直接记录失败。`Retry-After` 可延长等待，每次最多 10 秒；连接和响应超时分别为 5 秒、10 秒。日志记录尝试次数、HTTP 状态或业务码，不输出 Webhook、消息正文或原始错误回执。相关回执与限流说明见[飞书官方文档](https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot?lang=zh-CN)。
+
+发送重试不会增加连续失败轮次，也不会重新创建报告分享链接。重试在当前进程中完成，没有持久化待发送队列；进程崩溃或三次均失败仍可能漏发。请求已被接收但回执在网络中丢失时，重试可能造成重复消息。隔离验收会在第二轮失败的告警发送中依次模拟 HTTP 503、业务限流 11232 和成功回执，验证三次请求正文一致且最终接收一次。

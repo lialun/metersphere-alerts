@@ -170,8 +170,13 @@ def main():
                 assert not shared.get('expired') and not shared.get('deleted'), 'Report share is unavailable'
                 assert shared['reportId'] == report['id'], 'Share link points to a different report'
                 return share_id
+            mock.api('/notify-mode/retry')
             run_round(503, 0)
+            assert not mock.api('/notification-attempts'), 'First failure bypassed the two-round threshold'
             first_alert_report = run_round(503, 1)
+            attempts = mock.api('/notification-attempts')
+            assert len(attempts) == 3 and all(item == attempts[0] for item in attempts), 'Expected identical payload across exactly three delivery attempts'
+            print('Feishu delivery recovered from HTTP 503 and business rate limit 11232 after exactly 3 attempts', flush=True)
             text = notifications()[0]
             first_share = scenario_share(text, first_alert_report)
             for expected in ['ALERT|Scheduled acceptance|2|2', 'Synthetic health API', 'GET', '/check', '503', '200']:
@@ -244,6 +249,7 @@ def main():
             plan_round(200, 3)
             plan_round(503, 3)
             plan_round(503, 4)
+            assert len(mock.api('/notification-attempts')) == 6, 'Unexpected extra delivery attempts after retry recovery'
             # Ensure the image serves the rebuilt frontend, rather than silently retaining the original bundle.
             actual = urllib.request.urlopen(client.base + '/', timeout=15).read().decode()
             expected = pathlib.Path('frontend/dist/index.html').read_text()
@@ -252,7 +258,20 @@ def main():
             print('PASS: threshold, once-until-recovery, custom failed-request content, secret omission and frontend assets', flush=True)
         except Exception:
             logs = subprocess.run(['docker', 'logs', app], capture_output=True, text=True)
-            for line in (logs.stdout + logs.stderr).splitlines():
+            runtime_log = logs.stdout + logs.stderr
+            # Only synthetic resource state and exception class names are emitted;
+            # arbitrary log messages can contain generated session material.
+            error_types = sorted(set(re.findall(r'\b(?:[\w$]+\.)*[A-Z][\w$]*(?:Exception|Error)\b', runtime_log)))
+            print(json.dumps({'runtimeExceptionTypes': error_types,
+                'invalidRedissonTickDuration': 'tickDuration must be greater than 0' in runtime_log}), flush=True)
+            for label, query in [('scenarioExecutions', locals().get('executions')), ('scenarioReports', locals().get('reports'))]:
+                if callable(query):
+                    try:
+                        print(json.dumps({label: [{key: item.get(key) for key in ['id', 'status', 'execStatus', 'triggerMode']}
+                            for item in query()[:5]]}), flush=True)
+                    except Exception:
+                        print(label + ': diagnostics unavailable', flush=True)
+            for line in runtime_log.splitlines():
                 if 'Scheduled alert metadata:' in line:
                     print(line, flush=True)
             raise

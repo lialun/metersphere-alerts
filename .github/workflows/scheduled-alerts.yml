@@ -26,7 +26,7 @@ jobs:
         run: >-
           mvn -B -ntp -f backend/pom.xml -Drevision=3.6.10-lts
           -DskipAntRunForJenkins=true -pl services/test-plan -am package
-          -Dtest=ScheduledAlertServiceTest,ScheduledAlertMysqlIT,ApiFailureDetailServiceTest,LarkNoticeSenderTest
+          -Dtest=ScheduledAlertServiceTest,ScheduledAlertMysqlIT,ApiFailureDetailServiceTest,LarkNoticeSenderTest,LarkClientTest
           -Dsurefire.failIfNoSpecifiedTests=false -DfailIfNoTests=false
       - uses: actions/upload-artifact@v7.0.2
         if: always()
