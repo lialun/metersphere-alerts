@@ -12,7 +12,7 @@ export default {
   'project.scheduledAlert.template': 'Failure notification template',
   'project.scheduledAlert.defaultTemplate': 'Leave blank for the default template with failed requests and causes',
   'project.scheduledAlert.variables':
-    'Click to insert variables. URLs omit query parameters; bodies and headers are excluded.',
+    'Click to insert variables. reportShareUrl links to this report using the project share expiry. Request URLs omit query parameters; bodies and headers are excluded.',
   'project.scheduledAlert.useExample': 'Use example template',
 
   'project.messageManagement': 'Message management',

@@ -10,7 +10,8 @@ export default {
   'project.scheduledAlert.repeat': '达到阈值后，每轮失败继续通知（取消后仅首次通知，成功后可重新告警）',
   'project.scheduledAlert.template': '失败通知模板',
   'project.scheduledAlert.defaultTemplate': '留空使用包含失败接口和原因的默认模板',
-  'project.scheduledAlert.variables': '点击插入变量。地址省略查询参数；请求/响应正文与请求头不进入通知。',
+  'project.scheduledAlert.variables':
+    '点击插入变量。reportShareUrl 为对应报告的分享链接，沿用项目分享有效期。接口地址省略查询参数；请求/响应正文与请求头不进入通知。',
   'project.scheduledAlert.useExample': '使用示例模板',
 
   'project.messageManagement': '消息管理',

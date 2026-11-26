@@ -128,4 +128,16 @@ class ScheduledAlertServiceTest {
         policy.setFailureTemplate("${bad");
         assertThrows(RuntimeException.class, () -> service.savePolicy(policy));
     }
+    @Test void shareLinkVariableIsAcceptedAndDistinctFromAuthenticatedReportUrl() {
+        policy.setProjectId("project");
+        policy.setTaskType("API_SCENARIO_TASK");
+        policy.setFailureTemplate("${reportShareUrl}\n${reportUrl}");
+        doAnswer(call -> { policy.setRevision(1); return null; }).when(mapper).savePolicy(policy);
+        assertDoesNotThrow(() -> service.savePolicy(policy));
+        String shared = "https://metersphere.example/#/share/shareReportScenario?shareId=this-report";
+        String authenticated = "https://metersphere.example/#/api-test/report?reportId=this-report";
+        assertEquals(shared + "\n" + authenticated, ScheduledAlertService.render(
+                new ScheduledAlertDecision("this-report", 2, policy),
+                Map.of("reportShareUrl", shared, "reportUrl", authenticated)));
+    }
 }

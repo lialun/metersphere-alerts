@@ -14,7 +14,7 @@ import java.util.regex.*;
 @Service
 public class ScheduledAlertService {
     public static final Set<String> VARIABLES = Set.of("projectName", "resourceName", "environment", "reportName",
-            "reportUrl", "failureDetails", "failedCount", "consecutiveFailures", "threshold");
+            "reportUrl", "reportShareUrl", "failureDetails", "failedCount", "consecutiveFailures", "threshold");
     private static final Pattern VARIABLE = Pattern.compile("\\$\\{([^{}]+)}");
     public static final String DEFAULT_TEMPLATE = """
             ${projectName} / ${resourceName}

@@ -11,6 +11,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+import urllib.parse
 import uuid
 
 
@@ -103,7 +104,7 @@ def main():
                 'event': 'SCENARIO_EXECUTE_FAILED', 'receiverIds': ['admin'], 'robotId': robot, 'enable': True})
             policy = client.api(f'/notice/scheduled-alert/{project}/API_SCENARIO_TASK')
             policy.update(failureThreshold=2, repeatNotifications=False,
-                failureTemplate='ALERT|${resourceName}|${consecutiveFailures}|${threshold}\n${failureDetails}')
+                failureTemplate='ALERT|${resourceName}|${consecutiveFailures}|${threshold}\n${failureDetails}\nREPORT_SHARE|${reportShareUrl}')
             client.api('/notice/scheduled-alert', policy)
             pool = client.api('/test/resource/pool/page', {'current': 1, 'pageSize': 20})['list'][0]
             dto = pool['testResourceDTO']
@@ -157,9 +158,22 @@ def main():
                     'customTemplate': [text.startswith('ALERT|') or 'ALERT|' in text for text in notifications()]}), flush=True)
                 assert len(notifications()) == expected_notifications, 'Unexpected notification count'
                 print(f'Completed HTTP {status} round; notifications={expected_notifications}', flush=True)
+                return detail
+            def scenario_share(text, report):
+                link = re.search(r'REPORT_SHARE\|(\S+)', text).group(1)
+                fragment = urllib.parse.urlsplit(link).fragment
+                assert fragment.startswith('/share/shareReportScenario?'), 'Incorrect scenario share route'
+                share_id = urllib.parse.parse_qs(fragment.split('?', 1)[1])['shareId'][0]
+                # Anonymous metadata lookup validates that the link targets this
+                # exact failed report, rather than a list or a previous round.
+                shared = Client(client.base).api('/api/report/share/get/' + share_id)
+                assert not shared.get('expired') and not shared.get('deleted'), 'Report share is unavailable'
+                assert shared['reportId'] == report['id'], 'Share link points to a different report'
+                return share_id
             run_round(503, 0)
-            run_round(503, 1)
+            first_alert_report = run_round(503, 1)
             text = notifications()[0]
+            first_share = scenario_share(text, first_alert_report)
             for expected in ['ALERT|Scheduled acceptance|2|2', 'Synthetic health API', 'GET', '/check', '503', '200']:
                 if expected not in text:
                     print('Synthetic notification: ' + re.sub(r'token=[^&\s]+', 'token=[redacted]', text[:1600]), flush=True)
@@ -168,7 +182,8 @@ def main():
             run_round(503, 1)
             run_round(200, 1)  # Success notification is disabled; recovery must still reset the streak.
             run_round(503, 1)
-            run_round(503, 2)
+            next_alert_report = run_round(503, 2)
+            assert scenario_share(notifications()[-1], next_alert_report) != first_share, 'Share link was reused across reports'
             print('Checking scheduled test-plan aggregation', flush=True)
             client.api('/notice/message/task/save', {'projectId': project, 'taskType': 'API_SCENARIO_TASK',
                 'event': 'SCENARIO_EXECUTE_FAILED', 'receiverIds': ['admin'], 'robotId': robot, 'enable': False})
@@ -176,7 +191,7 @@ def main():
                 'event': 'EXECUTE_FAILED', 'receiverIds': ['admin'], 'robotId': robot, 'enable': True})
             plan_policy = client.api(f'/notice/scheduled-alert/{project}/TEST_PLAN_TASK')
             plan_policy.update(failureThreshold=2, repeatNotifications=False,
-                failureTemplate='PLAN|${resourceName}|${consecutiveFailures}|${threshold}\n${failureDetails}')
+                failureTemplate='PLAN|${resourceName}|${consecutiveFailures}|${threshold}\n${failureDetails}\nREPORT_SHARE|${reportShareUrl}')
             client.api('/notice/scheduled-alert', plan_policy)
             plan = client.api('/test-plan/add', {'projectId': project, 'name': 'Scheduled plan acceptance',
                 'type': 'TEST_PLAN', 'passThreshold': 100})['id']
@@ -225,6 +240,7 @@ def main():
                 if expected not in text:
                     print('Synthetic plan notification: ' + re.sub(r'token=[^&\s]+', 'token=[redacted]', text[:1600]), flush=True)
                     raise AssertionError('Missing plan failure detail: ' + expected)
+            assert '/#/share/shareReportTestPlan?' in text and 'shareId=' in text, 'Missing plan report share link'
             plan_round(200, 3)
             plan_round(503, 3)
             plan_round(503, 4)
