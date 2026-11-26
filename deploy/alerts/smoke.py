@@ -258,7 +258,20 @@ def main():
             print('PASS: threshold, once-until-recovery, custom failed-request content, secret omission and frontend assets', flush=True)
         except Exception:
             logs = subprocess.run(['docker', 'logs', app], capture_output=True, text=True)
-            for line in (logs.stdout + logs.stderr).splitlines():
+            runtime_log = logs.stdout + logs.stderr
+            # Only synthetic resource state and exception class names are emitted;
+            # arbitrary log messages can contain generated session material.
+            error_types = sorted(set(re.findall(r'\b(?:[\w$]+\.)*[A-Z][\w$]*(?:Exception|Error)\b', runtime_log)))
+            print(json.dumps({'runtimeExceptionTypes': error_types,
+                'invalidRedissonTickDuration': 'tickDuration must be greater than 0' in runtime_log}), flush=True)
+            for label, query in [('scenarioExecutions', locals().get('executions')), ('scenarioReports', locals().get('reports'))]:
+                if callable(query):
+                    try:
+                        print(json.dumps({label: [{key: item.get(key) for key in ['id', 'status', 'execStatus', 'triggerMode']}
+                            for item in query()[:5]]}), flush=True)
+                    except Exception:
+                        print(label + ': diagnostics unavailable', flush=True)
+            for line in runtime_log.splitlines():
                 if 'Scheduled alert metadata:' in line:
                     print(line, flush=True)
             raise
