@@ -64,6 +64,7 @@
     'environment',
     'reportName',
     'reportUrl',
+    'reportShareUrl',
     'failedCount',
     'failureDetails',
     'consecutiveFailures',
@@ -81,6 +82,7 @@
       environment: 'Test',
       reportName: 'API report',
       reportUrl: 'https://metersphere.example/#/api-test/report',
+      reportShareUrl: 'https://metersphere.example/#/share/shareReportScenario?shareId=example',
       failedCount: 1,
       failureDetails:
         'Login API | POST https://api.example/login | HTTP 503 | Expected HTTP 200: expected 200, actual 503',

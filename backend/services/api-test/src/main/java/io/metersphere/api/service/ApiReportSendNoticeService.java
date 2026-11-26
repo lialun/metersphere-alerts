@@ -262,6 +262,7 @@ public class ApiReportSendNoticeService {
             paramMap.put("environment", "未配置");
         }
         paramMap.put("reportUrl", reportUrl);
+        paramMap.put("reportShareUrl", shareUrl);
 
         paramMap.put("scenarioShareUrl", shareUrl);
         paramMap.put("shareUrl", shareUrl);
