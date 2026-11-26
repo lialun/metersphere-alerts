@@ -170,8 +170,13 @@ def main():
                 assert not shared.get('expired') and not shared.get('deleted'), 'Report share is unavailable'
                 assert shared['reportId'] == report['id'], 'Share link points to a different report'
                 return share_id
+            mock.api('/notify-mode/retry')
             run_round(503, 0)
+            assert not mock.api('/notification-attempts'), 'First failure bypassed the two-round threshold'
             first_alert_report = run_round(503, 1)
+            attempts = mock.api('/notification-attempts')
+            assert len(attempts) == 3 and all(item == attempts[0] for item in attempts), 'Expected identical payload across exactly three delivery attempts'
+            print('Feishu delivery recovered from HTTP 503 and business rate limit 11232 after exactly 3 attempts', flush=True)
             text = notifications()[0]
             first_share = scenario_share(text, first_alert_report)
             for expected in ['ALERT|Scheduled acceptance|2|2', 'Synthetic health API', 'GET', '/check', '503', '200']:
@@ -244,6 +249,7 @@ def main():
             plan_round(200, 3)
             plan_round(503, 3)
             plan_round(503, 4)
+            assert len(mock.api('/notification-attempts')) == 6, 'Unexpected extra delivery attempts after retry recovery'
             # Ensure the image serves the rebuilt frontend, rather than silently retaining the original bundle.
             actual = urllib.request.urlopen(client.base + '/', timeout=15).read().decode()
             expected = pathlib.Path('frontend/dist/index.html').read_text()
