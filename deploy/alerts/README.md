@@ -75,6 +75,6 @@ docker build -f deploy/alerts/Dockerfile -t metersphere-alerts:3.6.10-lts .
 
 `deploy.py` 供已有单容器发行版的发布流水线调用。环境在流水线提供 `--base`、`--project`、`--container`、`--commit` 和可选的 `--watchdog-unit`，仓库不保存公司地址或凭据。输入 bundle 包含已验收的 5 个 JAR、前端、Dockerfile 和逐文件 SHA-256 的 `manifest.json`。清单绑定源码提交和官方底座 digest；流水线还应固定整个 bundle 的 SHA-256。
 
-发布器先校验并构建镜像，再停服，将数据及原配置卷冷备份到实例 `backups/alerts-<UTC>/`（0700/0600），备份完成后切换。配置卷显式复用原卷，健康检查后核对全部挂载身份、JAR 与前端字节。失败恢复原 Compose 和程序镜像，并恢复已有健康定时器；数据库保留向前兼容的新表，不自动回退数据库。备份包含业务敏感数据，应只在受控宿主按现有备份策略管理，不能发布到 GitHub。`python3 -m unittest discover -s deploy/alerts -p 'test_deploy.py'` 验证配置卷保护、制品校验及备份失败恢复。
+发布器先校验并构建镜像，以实际 UID 1000 检查制品可读性，并在不连接公司网络、不挂载公司配置的临时容器中验收应用启动，通过后才停服。Dockerfile 显式设置 JAR 为 0644、前端文件/目录为 0644/0755，避免安全解包的 0077 umask 导致实际 JVM 无法读到类文件。随后将数据及原配置卷冷备份到实例 `backups/alerts-<UTC>/`（0700/0600），备份完成后切换。配置卷显式复用原卷，健康检查后核对全部挂载身份、JAR 与前端字节。失败恢复原 Compose 和程序镜像，并恢复已有健康定时器；数据库保留向前兼容的新表，不自动回退数据库。备份包含业务敏感数据，应只在受控宿主按现有备份策略管理，不能发布到 GitHub。`python3 -m unittest discover -s deploy/alerts -p 'test_deploy.py'` 验证配置卷保护、制品校验及备份失败恢复。
 
 通知去重保证同一轮执行只尝试派发一次；外部通道的成功交付仍沿用原发送器行为，不承诺在进程崩溃或 Webhook 失败时必达。
