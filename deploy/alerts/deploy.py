@@ -119,9 +119,14 @@ def main():
         # company configuration or network is attached to the preflight image.
         probe = 'ms-alert-preflight-' + str(os.getpid())
         probe_created = False
+        network_created = False
         try:
+            # Kafka resolves the container hostname during startup. A dedicated
+            # internal network supplies that identity without external access.
+            run(['docker', 'network', 'create', '--internal', '--label', 'metersphere.alert-preflight=true', probe])
+            network_created = True
             run(['docker', 'run', '-d', '--name', probe, '--label', 'metersphere.alert-preflight=true',
-                 '--network', 'none', '--memory', '4g', '--cpus', '2',
+                 '--network', probe, '--memory', '4g', '--cpus', '2',
                  '-e', 'JAVA_TOOL_OPTIONS=-Xms128m -Xmx512m', image])
             probe_created = True
             run(['docker', 'exec', '--user', '1000', probe, 'sh', '-c',
@@ -144,6 +149,8 @@ def main():
         finally:
             if probe_created:
                 run(['docker', 'rm', '-f', '-v', probe], timeout=100)
+            if network_created:
+                run(['docker', 'network', 'rm', probe])
         backups = base / 'backups'
         backups.mkdir(mode=0o700, exist_ok=True)
         size = sum(p.stat().st_size for p in (base / 'data').rglob('*') if p.is_file())
