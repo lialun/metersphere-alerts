@@ -41,6 +41,38 @@ class DeploymentTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'checksum'):
                 deploy.checked_bundle(base, 'expected')
 
+    def test_unreadable_candidate_keeps_existing_service_running(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            (base / 'data').mkdir()
+            encoded = json.dumps({'services': {'metersphere': {'image': deploy.BASE_IMAGE}}}).encode()
+            (base / 'compose.yaml').write_bytes(encoded)
+            before = {'Config': {'Image': deploy.BASE_IMAGE, 'Labels': {
+                'com.docker.compose.project': 'test', 'com.docker.compose.service': 'metersphere'}},
+                'Mounts': [{'Type': 'volume', 'Name': 'original-conf', 'Source': '/synthetic/conf',
+                            'Destination': '/opt/metersphere/conf'}]}
+            commands = []
+
+            def fake_run(args, **kwargs):
+                commands.append(args)
+                if args[:2] == ['docker', 'inspect']:
+                    return json.dumps([before])
+                if args[:3] == ['docker', 'image', 'inspect']:
+                    return 'expected'
+                if args[:4] == ['docker', 'exec', '--user', '1000']:
+                    raise RuntimeError('synthetic unreadable artifact')
+                return ''
+
+            argv = ['deploy.py', '--bundle', directory, '--commit', 'expected', '--base', directory,
+                    '--project', 'test', '--container', 'test-ms']
+            with patch('sys.argv', argv), patch.object(deploy, 'checked_bundle', return_value={}), \
+                    patch.object(deploy, 'run', side_effect=fake_run), patch.object(deploy.os, 'geteuid', return_value=0):
+                with self.assertRaisesRegex(RuntimeError, 'unreadable artifact'):
+                    deploy.main()
+            self.assertEqual((base / 'compose.yaml').read_bytes(), encoded)
+            self.assertFalse(any('stop' in command or 'up' in command for command in commands))
+            self.assertTrue(any(command[:4] == ['docker', 'rm', '-f', '-v'] for command in commands))
+
     def test_backup_failure_restarts_original_image_and_watchdog(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
@@ -70,6 +102,7 @@ class DeploymentTest(unittest.TestCase):
                     patch.object(deploy, 'run', side_effect=fake_run), patch.object(deploy.os, 'geteuid', return_value=0), \
                     patch.object(deploy.subprocess, 'run') as systemctl:
                 systemctl.return_value.returncode = 0
+                systemctl.return_value.stdout = '{"data":"synthetic-public-key"}'
                 with self.assertRaisesRegex(RuntimeError, 'release failed'):
                     deploy.main()
             self.assertEqual((base / 'compose.yaml').read_bytes(), encoded)

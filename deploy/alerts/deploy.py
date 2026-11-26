@@ -115,6 +115,35 @@ def main():
              '-f', str(args.bundle / 'deploy/alerts/Dockerfile'), '-t', image, str(args.bundle)], timeout=600)
         if run(['docker', 'image', 'inspect', '--format', '{{index .Config.Labels "org.opencontainers.image.revision"}}', image]) != args.commit:
             raise RuntimeError('Built image identity mismatch')
+        # Start with disposable data before stopping the existing service. No
+        # company configuration or network is attached to the preflight image.
+        probe = 'ms-alert-preflight-' + str(os.getpid())
+        probe_created = False
+        try:
+            run(['docker', 'run', '-d', '--name', probe, '--label', 'metersphere.alert-preflight=true',
+                 '--network', 'none', '--memory', '4g', '--cpus', '2',
+                 '-e', 'JAVA_TOOL_OPTIONS=-Xms128m -Xmx512m', image])
+            probe_created = True
+            run(['docker', 'exec', '--user', '1000', probe, 'sh', '-c',
+                 'test -r /metersphere/lib/metersphere-project-management-3.6.10-lts.jar '
+                 '&& test -r /metersphere/static/index.html && test -x /metersphere/static/assets'])
+            deadline = time.monotonic() + 300
+            while True:
+                result = subprocess.run(['docker', 'exec', probe, 'wget', '-q', '-T', '3', '-O', '-',
+                                         'http://127.0.0.1:8081/get-key'], capture_output=True, text=True, timeout=8)
+                try:
+                    ready = result.returncode == 0 and bool(json.loads(result.stdout).get('data'))
+                except (ValueError, AttributeError):
+                    ready = False
+                if ready:
+                    break
+                if time.monotonic() >= deadline:
+                    raise RuntimeError('Isolated image startup failed; existing service was not stopped')
+                time.sleep(5)
+            print(json.dumps({'status': 'preflight-passed', 'commit': args.commit, 'runtimeUid': 1000}), flush=True)
+        finally:
+            if probe_created:
+                run(['docker', 'rm', '-f', '-v', probe], timeout=100)
         backups = base / 'backups'
         backups.mkdir(mode=0o700, exist_ok=True)
         size = sum(p.stat().st_size for p in (base / 'data').rglob('*') if p.is_file())
