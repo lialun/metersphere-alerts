@@ -33,7 +33,9 @@ public class LarkNoticeSender extends AbstractNoticeSender {
                 .toList();
 
         LogUtils.info("飞书收件人: {}", userIds);
-        context += StringUtils.join(collect, StringUtils.SPACE);
+        if (!collect.isEmpty()) {
+            context += "\n" + StringUtils.join(collect, StringUtils.SPACE);
+        }
         LarkClient.send(messageDetail.getWebhook(), subjectText + ": \n" + context);
     }
 
