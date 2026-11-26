@@ -71,6 +71,10 @@ docker build -f deploy/alerts/Dockerfile -t metersphere-alerts:3.6.10-lts .
 
 此 Dockerfile 固定官方社区底座 digest，替换 5 个有变更的核心 JAR 及前端静态资源。新增 Flyway 迁移随 domain JAR 发布。`scheduled_alert_policy/state/result` 使用项目级外键级联清理；无新增外部服务。
 
-上线应走所属环境既有发布流水线，并在升级前备份数据库。DDL 新增表、不修改现有报告数据；撤回旧程序不会自动删除新表。本次开发不执行现有环境发布。
+上线应走所属环境既有发布流水线，并在升级前备份数据库。DDL 新增表、不修改现有报告数据；撤回旧程序不会自动删除新表。
+
+`deploy.py` 供已有单容器发行版的发布流水线调用。环境在流水线提供 `--base`、`--project`、`--container`、`--commit` 和可选的 `--watchdog-unit`，仓库不保存公司地址或凭据。输入 bundle 包含已验收的 5 个 JAR、前端、Dockerfile 和逐文件 SHA-256 的 `manifest.json`。清单绑定源码提交和官方底座 digest；流水线还应固定整个 bundle 的 SHA-256。
+
+发布器先校验并构建镜像，再停服，将数据及原配置卷冷备份到实例 `backups/alerts-<UTC>/`（0700/0600），备份完成后切换。配置卷显式复用原卷，健康检查后核对全部挂载身份、JAR 与前端字节。失败恢复原 Compose 和程序镜像，并恢复已有健康定时器；数据库保留向前兼容的新表，不自动回退数据库。备份包含业务敏感数据，应只在受控宿主按现有备份策略管理，不能发布到 GitHub。`python3 -m unittest discover -s deploy/alerts -p 'test_deploy.py'` 验证配置卷保护、制品校验及备份失败恢复。
 
 通知去重保证同一轮执行只尝试派发一次；外部通道的成功交付仍沿用原发送器行为，不承诺在进程崩溃或 Webhook 失败时必达。
